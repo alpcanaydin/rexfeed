@@ -15,19 +15,50 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
+      - name: Check the tag
+        run: |
+          printf '%s' "$GITHUB_REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "unexpected tag: $GITHUB_REF_NAME" >&2; exit 1; }
       - name: Test
-        run: cargo test
+        run: cargo test --locked
       - name: Package
         id: pack
-        run: echo "file=$(scripts/package-release.sh "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
+        run: |
+          file=$(scripts/package-release.sh "$GITHUB_REF_NAME")
+          case "$file" in build/release/rexfeed-v*.tar.gz) ;; *) echo "unexpected package path: $file" >&2; exit 1;; esac
+          echo "file=$file" >> "$GITHUB_OUTPUT"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          FILE: ${{ steps.pack.outputs.file }}
         run: |
           notes=$(awk -v v="${GITHUB_REF_NAME#v}" '$0 ~ "^## \\[?"v {f=1; next} /^## / {f=0} f' CHANGELOG.md)
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" "${{ steps.pack.outputs.file }}" --clobber
+            gh release upload "$GITHUB_REF_NAME" "$FILE" --clobber
           else
-            gh release create "$GITHUB_REF_NAME" "${{ steps.pack.outputs.file }}" \
+            gh release create "$GITHUB_REF_NAME" "$FILE" \
               --title "rexfeed $GITHUB_REF_NAME" --notes "${notes:-See CHANGELOG.md}"
           fi
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+          FILE: ${{ steps.pack.outputs.file }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::warning::TAP_TOKEN not set; the tap's daily bump picks this release up"; exit 0; fi
+          name=$(basename "$FILE")
+          sha=$(shasum -a 256 "$FILE" | cut -d' ' -f1)
+          url="https://github.com/$REPO/releases/download/$GITHUB_REF_NAME/$name"
+          gh repo clone alpcanaydin/homebrew-rexfeed tap -- -q
+          cd tap
+          URL="$url" SHA="$sha" python3 - <<'PY'
+          import os, re
+          p = "Formula/rexfeed.rb"
+          s = open(p).read()
+          s = re.sub(r'(?m)^  url ".*"$', lambda _: f'  url "{os.environ["URL"]}"', s, count=1)
+          s = re.sub(r'(?m)^  sha256 ".*"$', lambda _: f'  sha256 "{os.environ["SHA"]}"', s, count=1)
+          open(p, "w").write(s)
+          PY
+          git diff --quiet && { echo "tap already up to date"; exit 0; }
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qam "rexfeed $GITHUB_REF_NAME"
+          git push -q "https://x-access-token:$GH_TOKEN@github.com/alpcanaydin/homebrew-rexfeed.git" HEAD

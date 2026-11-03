@@ -192,6 +192,7 @@ impl Player {
                     "18/b[height<=480]/b/bv*",
                     "-o",
                     "-",
+                    "--",
                     url,
                 ])
                 .stdin(Stdio::null())
@@ -307,9 +308,6 @@ impl Player {
             thread: Some(thread),
         })
     }
-
-    /// Sound isn't played in the frame pipeline; kept so the `m` key stays harmless.
-    fn cmd(&self, _json: &str) {}
 
     fn set_paused(&mut self, p: bool) {
         self.pause.store(p, std::sync::atomic::Ordering::Relaxed);
@@ -943,11 +941,7 @@ impl Pane {
             }
             b + RST
         };
-        let keys = if it.video.is_some() {
-            "n p ␣ o m q"
-        } else {
-            "n p ␣ o q"
-        };
+        let keys = "n p ␣ o q";
         let bg = card_bg(it);
         let s = format!(
             "\x1b7\x1b[{r1};5H{link}\x1b[{r2};5H{blank}\x1b[{r2};5H{status}\x1b[{r3};5H{blank}\x1b[{r3};5H{dots}  {counter}\x1b[{r3};{kc}H{DIM}{keys}{RST}",
@@ -1022,11 +1016,9 @@ impl Pane {
                         }
                         KeyCode::Char(' ') => self.manual_pause = !self.manual_pause,
                         KeyCode::Char('o') | KeyCode::Enter => {
-                            let _ = Command::new("open").arg(&self.queue[self.i].url).spawn();
-                        }
-                        KeyCode::Char('m') => {
-                            if let Some(p) = &self.player {
-                                p.cmd(r#"{"command":["cycle","mute"]}"#);
+                            let u = &self.queue[self.i].url;
+                            if u.starts_with("https://") || u.starts_with("http://") {
+                                let _ = Command::new("open").arg(u).spawn();
                             }
                         }
                         _ => {}

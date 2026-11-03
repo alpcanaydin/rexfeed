@@ -1,14 +1,7 @@
 <div align="center">
   <img src="assets/logo.svg" width="96" alt="rexfeed logo">
 
-```text
-██████╗ ███████╗██╗  ██╗███████╗███████╗███████╗██████╗
-██╔══██╗██╔════╝╚██╗██╔╝██╔════╝██╔════╝██╔════╝██╔══██╗
-██████╔╝█████╗   ╚███╔╝ █████╗  █████╗  █████╗  ██║  ██║
-██╔══██╗██╔══╝   ██╔██╗ ██╔══╝  ██╔══╝  ██╔══╝  ██║  ██║
-██║  ██║███████╗██╔╝ ██╗██║     ███████╗███████╗██████╔╝
-╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝╚═════╝
-```
+<img src="assets/wordmark.svg" width="480" alt="rexfeed">
 
   *Something worth a glance while your coding agent works, in a side pane of [Rex](https://rex.superlogical.com). For Claude Code, Codex, OpenCode and Pi.*
 
@@ -20,9 +13,9 @@
   [How it works](#how-it-works) • [Install](#install) • [Usage](#usage) • [Sources](#sources) • [Video](#how-video-works) • [Config](#config) • [FAQ](#faq)
 </div>
 
-<p align="center"><a href="assets/demo.mp4"><img src="assets/screenshot.png" width="720" alt="rexfeed beside a Claude Code session in Rex"></a></p>
+https://github.com/user-attachments/assets/6259f35f-b59b-457e-b918-fced48eede0c
 
-<p align="center"><sub>Three Claude Code turns, sped up 4×: the pane opens as Claude starts and closes when it's done. <a href="assets/demo.mp4">Watch the video</a>.</sub></p>
+<p align="center"><sub>Three Claude Code turns, sped up 4×: the pane opens as the agent starts and closes when it's done. No player? <a href="assets/demo.mp4">Download the video</a>.</sub></p>
 
 While your agent thinks, you wait. rexfeed fills that wait: a pane opens beside the agent and rotates
 short tech cards (news, tips, product launches, YouTube and Reddit videos). Images and videos play
@@ -48,11 +41,10 @@ hooks drive the pane:
 
 | Event | Pane |
 |---|---|
-| `/rexfeed-start` | Turns rexfeed on for this session and opens the pane |
-| Prompt sent | Opens the pane, or resumes it if paused |
-| Agent finishes | Pauses: the card, its timer and any video |
+| `/rexfeed-start` | Turns rexfeed on for this session; no pane yet |
+| Prompt sent (the agent starts working) | Opens the pane |
+| Agent finishes | Closes the pane; the next prompt opens it again with unseen cards |
 | Pane has focus | Pauses so you can read; resumes when focus leaves |
-| Paused for `idle_close_minutes` | Closes |
 | 30 cards shown | Loads the next batch of unseen cards |
 | No unseen cards left | Starts a background refresh and closes |
 | `/rexfeed-stop` (`rexfeed off`) | Closes and turns off for this session |
@@ -74,7 +66,18 @@ background.
 You need a Mac with Apple silicon, [Rex](https://rex.superlogical.com), at least one of Claude Code,
 Codex, OpenCode or Pi, [Homebrew](https://brew.sh) and Python 3 (the installer edits the agents' JSON
 config with it).
-For videos and images: `mpv`, `ffmpeg` and `yt-dlp`.
+For images and videos: `ffmpeg` and `yt-dlp` (Homebrew installs them for you).
+
+With Homebrew:
+
+```sh
+brew trust --tap alpcanaydin/rexfeed   # Homebrew asks you to trust third-party taps
+brew install alpcanaydin/rexfeed/rexfeed
+rexfeed-setup
+```
+
+`rexfeed-setup` hooks rexfeed into your agents. Upgrades need nothing else: the hooks point at
+Homebrew's stable `opt` path.
 
 From a release: download `rexfeed-<version>-aarch64-apple-darwin.tar.gz` from
 [Releases](https://github.com/alpcanaydin/rexfeed/releases), unpack it and run `./install.sh` inside.
@@ -92,7 +95,7 @@ brew install ffmpeg yt-dlp   # if you don't have them
 <summary>What the installer does</summary>
 
 - Builds the binary (from a checkout) and links `~/.local/bin/rexfeed` to it.
-- Installs `mpv` with Homebrew if it's missing, and tells you if `ffmpeg` or `yt-dlp` is.
+- Tells you if `ffmpeg` or `yt-dlp` is missing.
 - Runs `scripts/install-hooks.sh`, which hooks into each agent it finds (command on `PATH` or config
   dir present). JSON files are backed up to `*.bak-rexfeed` first; running it again doesn't
   duplicate anything. Config dirs follow `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`
@@ -129,7 +132,6 @@ In an agent session in Rex, run `/rexfeed-start` (Claude Code, OpenCode, Pi) or 
 | `p` `←` `↑` `h` `k` | Previous card |
 | `space` | Pause / resume |
 | `o` / `enter` | Open the link in your browser |
-| `m` | Toggle video sound |
 | `q` / `esc` / `ctrl+c` | Close the pane |
 
 The link line is also an OSC 8 hyperlink, so `⌘`-click opens it too.
@@ -157,14 +159,16 @@ Cards without media get the page's `og:image`. Code in tips is syntax-highlighte
 
 ## How video works
 
-`mpv --vo=kitty` renders the frames. Its output is piped through the pane and forwarded on
-escape-sequence boundaries, so frames never interleave with the pane's own drawing. Playback stops
-after `video_max` seconds.
+Each refresh downloads the first seconds of the next few unseen videos in the background (YouTube
+through `yt-dlp`, Reddit from its `v.redd.it/<id>/HLSPlaylist.m3u8` playlist, both with `ffmpeg`),
+and a video card only joins the queue once its clip is on disk. So a video starts the moment its
+card shows.
 
-YouTube's video servers reject mpv's own fetch with 403, so `yt-dlp -o -` downloads the stream and
-pipes it in. Reddit wants a login for yt-dlp, so its videos play from
-`v.redd.it/<id>/HLSPlaylist.m3u8` instead. Pausing goes through mpv's JSON IPC socket. Images are
-converted with `ffmpeg` and drawn with kitty graphics.
+`ffmpeg` decodes the clip into small frames (at most 640px wide). Each frame is zlib-compressed and
+sent with the kitty graphics protocol under a new image id, and the previous frame is deleted only
+after the new one is placed, so there's no flicker. The terminal scales it to the card. Playback
+stops after `video_max` seconds, pauses with the pane, and has no sound. Images are converted with
+`ffmpeg` and drawn the same way.
 
 ## Config
 
@@ -173,24 +177,22 @@ converted with `ffmpeg` and drawn with kitty graphics.
 ```json
 {
   "dwell": 10,
-  "video_max": 45,
+  "video_max": 20,
   "queue_size": 30,
   "refresh_minutes": 45,
   "pane_ratio": 38,
-  "idle_close_minutes": 30,
-  "video_muted": true
+  "idle_close_minutes": 30
 }
 ```
 
 | Key | What |
 |---|---|
 | `dwell` | Seconds a card without video stays |
-| `video_max` | Seconds of a video to play |
+| `video_max` | Seconds of a video to play (and to download ahead) |
 | `queue_size` | Cards per batch |
 | `refresh_minutes` | Cache age that triggers a background fetch |
 | `pane_ratio` | Pane size passed to `rex split --ratio` |
-| `idle_close_minutes` | Minutes paused before the pane closes |
-| `video_muted` | Start videos muted (`m` toggles) |
+| `idle_close_minutes` | Minutes paused (pane focused) before it closes |
 
 To keep rexfeed out of a single session, start it with `REXFEED_OFF=1`.
 
@@ -208,7 +210,7 @@ and keep the session open in its TUI (the TUI plugin tells rexfeed which pane it
 <details>
 <summary>Videos don't play</summary>
 
-Check `mpv`, `ffmpeg` and `yt-dlp` are on your `PATH`. YouTube changes often, so `brew upgrade yt-dlp`
+Check `ffmpeg` and `yt-dlp` are on your `PATH`. YouTube changes often, so `brew upgrade yt-dlp`
 fixes most failures.
 </details>
 

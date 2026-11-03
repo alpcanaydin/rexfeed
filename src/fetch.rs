@@ -74,6 +74,24 @@ fn mark_pre(s: &str) -> String {
     .to_string()
 }
 
+/// Remote text goes straight to the terminal: drop control characters (escape sequences) except
+/// newlines and the \x01 code-line marker.
+pub fn clean(s: &str) -> String {
+    s.chars()
+        .filter(|&c| !c.is_control() || c == '\n' || c == '\x01')
+        .collect()
+}
+
+/// Only plain http(s) links survive (they're opened, fetched and handed to yt-dlp/ffmpeg).
+pub fn safe_url(u: &str) -> String {
+    let u = clean(u.trim());
+    if (u.starts_with("https://") || u.starts_with("http://")) && !u.contains(char::is_whitespace) {
+        u
+    } else {
+        String::new()
+    }
+}
+
 pub fn strip_html(s: &str, limit: usize) -> String {
     let s = &mark_pre(s);
     static R: OnceLock<[Regex; 6]> = OnceLock::new();
@@ -107,7 +125,7 @@ pub fn strip_html(s: &str, limit: usize) -> String {
         .join("\n")
         .trim()
         .to_string();
-    truncate(&s, limit)
+    truncate(&clean(&s), limit)
 }
 
 pub fn truncate(s: &str, limit: usize) -> String {
@@ -152,13 +170,19 @@ fn item(
         let key = format!("{source}|{}", if url.is_empty() { title } else { url });
         sha1_smol::Sha1::from(key).digest().to_string()[..16].to_string()
     });
-    let video = video.or_else(|| yt_id(url).map(|_| url.to_string()));
+    // YouTube links are rebuilt from the video id, so nothing else of the raw url reaches yt-dlp
+    let canon = |u: &str| yt_id(u).map(|id| format!("https://www.youtube.com/watch?v={id}"));
+    let video = video
+        .map(|v| canon(&v).unwrap_or_else(|| safe_url(&v)))
+        .or_else(|| canon(url))
+        .filter(|v| !v.is_empty());
+    let image = image.map(|i| safe_url(&i)).filter(|i| !i.is_empty());
     Item {
         id,
-        source: source.into(),
+        source: clean(source),
         title: strip_html(title, 160),
-        url: url.into(),
-        body,
+        url: safe_url(url),
+        body: clean(&body),
         image,
         video,
         kind: kind.into(),
@@ -928,6 +952,7 @@ pub fn prefetch_video(url: &str) {
             .arg(format!("*0-{secs}"))
             .args(["--force-overwrites", "-o"])
             .arg(&part)
+            .arg("--")
             .arg(url)
             .stdin(Stdio::null())
             .output()
