@@ -851,7 +851,7 @@ impl Pane {
         } else if self.manual_pause {
             format!("\x1b[38;5;221m⏸  paused · space to resume{RST}")
         } else if self.paused {
-            format!("\x1b[38;5;221m⏸  Claude idle · resumes on next prompt{RST}")
+            format!("\x1b[38;5;221m⏸  agent idle · resumes on next prompt{RST}")
         } else {
             let filled = ((self.elapsed / total).min(1.0) * bar_w as f64) as usize;
             let mut b = String::new();
@@ -1010,7 +1010,7 @@ fn splash() {
                 crate::logo::paint(l, true)
             );
         }
-        let tag = "short reads while Claude works";
+        let tag = "short reads while your agent works";
         s += &format!(
             "\x1b[{};{}H{DIM}{tag}{RST}",
             top + 8,
