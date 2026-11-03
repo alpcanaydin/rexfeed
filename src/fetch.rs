@@ -881,7 +881,10 @@ pub fn fetch_all() {
 pub fn video_cache(url: &str) -> std::path::PathBuf {
     let dir = cache_dir().join("media");
     let _ = std::fs::create_dir_all(&dir);
-    dir.join(format!("{}.mp4", &sha1_smol::Sha1::from(url).digest().to_string()[..20]))
+    dir.join(format!(
+        "{}.mp4",
+        &sha1_smol::Sha1::from(url).digest().to_string()[..20]
+    ))
 }
 
 /// Download the first seconds of a video (YouTube through yt-dlp, the rest through ffmpeg).
@@ -892,16 +895,36 @@ pub fn prefetch_video(url: &str) {
         return;
     }
     let secs = crate::config().video_max + 5;
-    let direct = Regex::new(r"(?i)\.(mp4|webm|mov|gif|m3u8)(\?|$)").unwrap().is_match(url);
+    let direct = Regex::new(r"(?i)\.(mp4|webm|mov|gif|m3u8)(\?|$)")
+        .unwrap()
+        .is_match(url);
     let ok = if direct {
         Command::new("ffmpeg")
-            .args(["-loglevel", "error", "-y", "-t", &secs.to_string(), "-i", url, "-an", "-c", "copy"])
+            .args([
+                "-loglevel",
+                "error",
+                "-y",
+                "-t",
+                &secs.to_string(),
+                "-i",
+                url,
+                "-an",
+                "-c",
+                "copy",
+            ])
             .arg(&part)
             .stdin(Stdio::null())
             .output()
     } else {
         Command::new("yt-dlp")
-            .args(["-q", "--no-warnings", "--no-part", "-f", "18/b[height<=480]/b", "--download-sections"])
+            .args([
+                "-q",
+                "--no-warnings",
+                "--no-part",
+                "-f",
+                "18/b[height<=480]/b",
+                "--download-sections",
+            ])
             .arg(format!("*0-{secs}"))
             .args(["--force-overwrites", "-o"])
             .arg(&part)
@@ -922,7 +945,8 @@ pub fn prefetch_video(url: &str) {
 /// Fetch every video clip the cache doesn't have yet (4 at a time) and drop clips no item uses.
 fn prefetch_all(items: &[Item]) {
     let urls: Vec<String> = items.iter().filter_map(|x| x.video.clone()).collect();
-    let keep: std::collections::HashSet<std::path::PathBuf> = urls.iter().map(|u| video_cache(u)).collect();
+    let keep: std::collections::HashSet<std::path::PathBuf> =
+        urls.iter().map(|u| video_cache(u)).collect();
     if let Ok(rd) = std::fs::read_dir(cache_dir().join("media")) {
         for e in rd.flatten() {
             let p = e.path();

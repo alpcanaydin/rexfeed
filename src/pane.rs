@@ -147,27 +147,53 @@ struct Player {
 
 impl Player {
     #[allow(clippy::too_many_arguments)]
-    fn start(url: &str, top: u16, left: u16, cols: u16, rows: u16, t: &Term, cfg: &Config) -> Option<Player> {
+    fn start(
+        url: &str,
+        top: u16,
+        left: u16,
+        cols: u16,
+        rows: u16,
+        t: &Term,
+        cfg: &Config,
+    ) -> Option<Player> {
         use std::sync::atomic::{AtomicBool, Ordering};
         let box_w = cols as f64 * t.cw;
         let box_h = rows as f64 * t.ch;
         let w = (box_w.min(640.0) as u32) & !1;
         let h = ((w as f64 * box_h / box_w) as u32) & !1;
-        log(&format!("video start {url} box {cols}x{rows} cells, {box_w:.0}x{box_h:.0}px"));
+        log(&format!(
+            "video start {url} box {cols}x{rows} cells, {box_w:.0}x{box_h:.0}px"
+        ));
         if w < 16 || h < 16 {
             return None;
         }
         let cached = crate::fetch::video_cache(url);
-        let url_owned = if cached.exists() { cached.display().to_string() } else { url.to_string() };
+        let url_owned = if cached.exists() {
+            cached.display().to_string()
+        } else {
+            url.to_string()
+        };
         let url = url_owned.as_str();
-        let direct = cached.exists() || Regex::new(r"(?i)\.(mp4|webm|mov|gif|m3u8)(\?|$)").unwrap().is_match(url);
+        let direct = cached.exists()
+            || Regex::new(r"(?i)\.(mp4|webm|mov|gif|m3u8)(\?|$)")
+                .unwrap()
+                .is_match(url);
         let mut procs = Vec::new();
         // YouTube's servers 403 a plain fetch; yt-dlp streams it to us instead
         let mut feeder = if direct {
             None
         } else {
             Command::new("yt-dlp")
-                .args(["-q", "--no-warnings", "--no-part", "-f", "18/b[height<=480]/b/bv*", "-o", "-", url])
+                .args([
+                    "-q",
+                    "--no-warnings",
+                    "--no-part",
+                    "-f",
+                    "18/b[height<=480]/b/bv*",
+                    "-o",
+                    "-",
+                    url,
+                ])
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
@@ -175,14 +201,34 @@ impl Player {
                 .map_err(|e| log(&format!("yt-dlp spawn: {e}")))
                 .ok()
         };
-        let input = if direct { url.to_string() } else { "-".to_string() };
+        let input = if direct {
+            url.to_string()
+        } else {
+            "-".to_string()
+        };
         let vf = format!(
             "fps={FPS},scale={w}:{h}:force_original_aspect_ratio=decrease:flags=fast_bilinear,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"
         );
         let mut ff = Command::new("ffmpeg")
-            .args(["-loglevel", "error", "-t", &cfg.video_max.to_string(), "-i", &input, "-an", "-vf", &vf])
+            .args([
+                "-loglevel",
+                "error",
+                "-t",
+                &cfg.video_max.to_string(),
+                "-i",
+                &input,
+                "-an",
+                "-vf",
+                &vf,
+            ])
             .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
-            .stdin(feeder.as_mut().and_then(|f| f.stdout.take()).map(Stdio::from).unwrap_or_else(Stdio::null))
+            .stdin(
+                feeder
+                    .as_mut()
+                    .and_then(|f| f.stdout.take())
+                    .map(Stdio::from)
+                    .unwrap_or_else(Stdio::null),
+            )
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
@@ -196,7 +242,12 @@ impl Player {
         let pause = Arc::new(AtomicBool::new(false));
         let finished = Arc::new(AtomicBool::new(false));
         let frames_n = Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let (st, pa, fi, fr) = (stop.clone(), pause.clone(), finished.clone(), frames_n.clone());
+        let (st, pa, fi, fr) = (
+            stop.clone(),
+            pause.clone(),
+            finished.clone(),
+            frames_n.clone(),
+        );
         let thread = std::thread::spawn(move || {
             let size = (w * h * 3) as usize;
             let mut frame = vec![0u8; size];
@@ -212,7 +263,8 @@ impl Player {
                 if src.read_exact(&mut frame).is_err() {
                     break;
                 }
-                let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+                let mut z =
+                    flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
                 if z.write_all(&frame).is_err() {
                     break;
                 }
@@ -239,10 +291,21 @@ impl Player {
                     next = now; // fell behind: don't burst to catch up
                 }
             }
-            log(&format!("video {w}x{h}: {frames} frames in {:.1}s", t0.elapsed().as_secs_f64()));
+            log(&format!(
+                "video {w}x{h}: {frames} frames in {:.1}s",
+                t0.elapsed().as_secs_f64()
+            ));
             fi.store(true, Ordering::Relaxed);
         });
-        Some(Player { procs, stop, pause, finished, frames: frames_n, started: std::time::Instant::now(), thread: Some(thread) })
+        Some(Player {
+            procs,
+            stop,
+            pause,
+            finished,
+            frames: frames_n,
+            started: std::time::Instant::now(),
+            thread: Some(thread),
+        })
     }
 
     /// Sound isn't played in the frame pipeline; kept so the `m` key stays harmless.
@@ -256,7 +319,8 @@ impl Player {
     fn done(&mut self) -> bool {
         use std::sync::atomic::Ordering;
         self.finished.load(Ordering::Relaxed)
-            || (self.frames.load(Ordering::Relaxed) == 0 && self.started.elapsed() > Duration::from_secs(12))
+            || (self.frames.load(Ordering::Relaxed) == 0
+                && self.started.elapsed() > Duration::from_secs(12))
     }
 
     fn stop(mut self) {
@@ -269,7 +333,11 @@ impl Player {
             let _ = h.join();
         }
         let last = VIDEO_ID_BASE + self.frames.load(std::sync::atomic::Ordering::Relaxed);
-        out(format!("\x1b_Ga=d,d=I,i={},q=2\x1b\\\x1b_Ga=d,d=I,i={last},q=2\x1b\\", last.saturating_sub(1)).as_bytes());
+        out(format!(
+            "\x1b_Ga=d,d=I,i={},q=2\x1b\\\x1b_Ga=d,d=I,i={last},q=2\x1b\\",
+            last.saturating_sub(1)
+        )
+        .as_bytes());
     }
 }
 
@@ -708,7 +776,12 @@ impl Pane {
         let mut body: Vec<String> = Vec::new();
         // paragraphs: drop link-only / sponsor lines, and leave a blank line between paragraphs
         let junk = Regex::new(r"(?i)^\W*(https?://\S+|.*\b(sponsor|sponsored|patreon|discord|twitch|twitter|merch|newsletter)\b.*)$").unwrap();
-        let paras: Vec<&str> = it.body.lines().map(str::trim_end).filter(|l| l.starts_with('\x01') || !(l.trim().is_empty() || junk.is_match(l))).collect();
+        let paras: Vec<&str> = it
+            .body
+            .lines()
+            .map(str::trim_end)
+            .filter(|l| l.starts_with('\x01') || !(l.trim().is_empty() || junk.is_match(l)))
+            .collect();
         for (pi, para) in paras.iter().enumerate() {
             let para = *para;
             let is_code = para.starts_with('\x01');

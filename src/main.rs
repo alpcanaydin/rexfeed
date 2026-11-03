@@ -153,7 +153,11 @@ pub fn build_queue(cfg: &Config) -> Vec<Item> {
         .into_iter()
         .filter(|x| !seen.contains(&x.id))
         // a video card waits until its clip is cached, so it always starts instantly
-        .filter(|x| x.video.as_deref().is_none_or(|v| crate::fetch::video_cache(v).exists()))
+        .filter(|x| {
+            x.video
+                .as_deref()
+                .is_none_or(|v| crate::fetch::video_cache(v).exists())
+        })
         .filter(|x| match only.as_deref() {
             Some("video") => x.video.is_some(),
             Some(k) => x.kind == k,
@@ -168,7 +172,13 @@ pub fn build_queue(cfg: &Config) -> Vec<Item> {
     fastrand::shuffle(&mut by_src);
     // REXFEED_LEAD=video: start with a (cached) video card, e.g. for demos
     let lead = (std::env::var("REXFEED_LEAD").as_deref() == Ok("video"))
-        .then(|| by_src.iter_mut().find_map(|(_, q)| q.iter().position(|x| x.video.is_some()).and_then(|i| q.remove(i))))
+        .then(|| {
+            by_src.iter_mut().find_map(|(_, q)| {
+                q.iter()
+                    .position(|x| x.video.is_some())
+                    .and_then(|i| q.remove(i))
+            })
+        })
         .flatten();
     let mut out: Vec<Item> = lead.into_iter().collect();
     while out.len() < cfg.queue_size && by_src.iter().any(|(_, q)| !q.is_empty()) {
@@ -300,7 +310,11 @@ fn hook(action: &str, key: Option<String>) {
                 ])
                 // `rex split` doesn't inherit our env: hand REXFEED_LEAD/REXFEED_ONLY over explicitly
                 .arg("/usr/bin/env")
-                .args(["REXFEED_LEAD", "REXFEED_ONLY"].iter().filter_map(|k| std::env::var(k).ok().map(|v| format!("{k}={v}"))))
+                .args(
+                    ["REXFEED_LEAD", "REXFEED_ONLY"]
+                        .iter()
+                        .filter_map(|k| std::env::var(k).ok().map(|v| format!("{k}={v}"))),
+                )
                 .arg(&exe)
                 .args(["pane", "--key", &key])
                 .output();
