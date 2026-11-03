@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Rex itself
+    url: https://rex.superlogical.com
+    about: Problems with Rex that happen without rexfeed belong to Rex, not here.
