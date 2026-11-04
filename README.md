@@ -33,7 +33,7 @@ hooks drive the pane:
 
 | Agent | How it hooks in | Opt-in |
 |---|---|---|
-| Claude Code | `UserPromptSubmit` / `Stop` / `SessionEnd` hooks | `/rexfeed-start`, `/rexfeed-stop` |
+| Claude Code | `UserPromptSubmit` / `Stop` / `SessionEnd` hooks, plus `SubagentStart` / `SubagentStop` so the pane stays open until running subagents finish | `/rexfeed-start`, `/rexfeed-stop` |
 | Codex | the same hooks in `~/.codex/hooks.json` (trust them once with `/hooks`) | `!rexfeed on`, `!rexfeed off` |
 | OpenCode | server plugin + TUI plugin | `/rexfeed-start`, `/rexfeed-stop` (or `!rexfeed on`) |
 | Pi | extension (`before_agent_start`, `agent_settled`, `session_shutdown`) | `/rexfeed-start`, `/rexfeed-stop` |
@@ -100,7 +100,7 @@ brew install ffmpeg yt-dlp   # if you don't have them
   dir present). JSON files are backed up to `*.bak-rexfeed` first; running it again doesn't
   duplicate anything. Config dirs follow `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `OPENCODE_CONFIG_DIR`
   (or `XDG_CONFIG_HOME`) and `PI_CODING_AGENT_DIR`.
-  - Claude Code: `UserPromptSubmit`, `Stop` and `SessionEnd` hooks in `~/.claude/settings.json`;
+  - Claude Code: `UserPromptSubmit`, `Stop`, `SessionEnd`, `SubagentStart` and `SubagentStop` hooks in `~/.claude/settings.json`;
     `/rexfeed-start` and `/rexfeed-stop` in `~/.claude/commands/`.
   - Codex: the same three hooks in `~/.codex/hooks.json`.
   - OpenCode: `plugins/rexfeed.js` and `plugins/rexfeed-tui/tui.js` in `~/.config/opencode`, the TUI
@@ -141,7 +141,7 @@ rexfeed fetch                refresh the cache (~/.cache/rexfeed)
 rexfeed on | off [--block B] enable or disable for the current Rex pane
 rexfeed pane                 run the pane by hand (never pauses for the agent)
 rexfeed list                 print cached items
-rexfeed hook start|stop|end [--block B]
+rexfeed hook start|stop|substart|substop|end [--block B]
                              agent hook entry points; the pane defaults to $REX_BLOCK
 ```
 

@@ -2,6 +2,12 @@
 
 All notable changes to rexfeed. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.1] - 2026-11-04
+
+### Changed
+
+- The pane stays open while subagents are still running: Claude Code's new `SubagentStart` / `SubagentStop` hooks (`rexfeed hook substart|substop`) open it when a subagent starts and close it only once the turn has ended and no subagent is left. A subagent that never reports back stops counting after 3 hours. Run `rexfeed-setup` (or `scripts/install-hooks.sh`) again to add the new hooks.
+
 ## [0.1.0] - 2026-11-03
 
 ### Added
@@ -17,4 +23,5 @@ All notable changes to rexfeed. The format follows [Keep a Changelog](https://ke
 - `~/.config/rexfeed/config.json` for timing, batch size, pane size and sound.
 - `install.sh` (migrates an older techfeed install) and `uninstall.sh`, both through `scripts/install-hooks.sh`.
 
+[0.1.1]: https://github.com/alpcanaydin/rexfeed/releases/tag/v0.1.1
 [0.1.0]: https://github.com/alpcanaydin/rexfeed/releases/tag/v0.1.0

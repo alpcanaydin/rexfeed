@@ -1,7 +1,8 @@
 #!/bin/sh
 # Hooks rexfeed into each coding agent Rex supports that is installed here:
 #
-#   Claude Code  ~/.claude/settings.json      UserPromptSubmit / Stop / SessionEnd command hooks
+#   Claude Code  ~/.claude/settings.json      UserPromptSubmit / Stop / SessionEnd / SubagentStart /
+#                                             SubagentStop command hooks
 #                ~/.claude/commands/          /rexfeed-start, /rexfeed-stop
 #   Codex        ~/.codex/hooks.json          the same hooks (Codex asks you to trust
 #                                             new hooks once: run /hooks in Codex)
@@ -40,9 +41,9 @@ hooks_json() {
   mkdir -p "$(dirname "$file")"
   [ -f "$file" ] || echo '{}' > "$file"
   cp "$file" "$file.bak-rexfeed"
-  /usr/bin/python3 - "$file" "$BIN" "$MODE" <<'PY'
+  /usr/bin/python3 - "$file" "$BIN" "$MODE" "${2:-}" <<'PY'
 import json, sys
-path, binary, mode = sys.argv[1:4]
+path, binary, mode, extra = sys.argv[1:5]
 raw = open(path).read()
 d = json.loads(raw or "{}")
 indent = 4 if raw.startswith('{\n    "') else 2
@@ -63,7 +64,10 @@ for event in list(hooks):
     else:
         del hooks[event]
 if mode != "remove":
-    for event, arg in (("UserPromptSubmit", "start"), ("Stop", "stop"), ("SessionEnd", "end")):
+    events = [("UserPromptSubmit", "start"), ("Stop", "stop"), ("SessionEnd", "end")]
+    if extra == "subagents":
+        events += [("SubagentStart", "substart"), ("SubagentStop", "substop")]
+    for event, arg in events:
         groups = hooks.setdefault(event, [])
         if any(mine(h) for g in groups for h in g.get("hooks", [])):
             continue
@@ -128,7 +132,7 @@ PY
 found=0
 if has claude "$CLAUDE_DIR"; then
   found=1
-  hooks_json "$CLAUDE_DIR/settings.json"
+  hooks_json "$CLAUDE_DIR/settings.json" subagents
   commands "$ROOT/commands" "$CLAUDE_DIR/commands"
 fi
 if has codex "$CODEX_DIR"; then

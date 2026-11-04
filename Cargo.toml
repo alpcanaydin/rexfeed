@@ -1,6 +1,6 @@
 [package]
 name = "rexfeed"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A side pane of short tech cards (news, tips, products, videos) next to Claude Code in the Rex terminal"
 license = "MIT"

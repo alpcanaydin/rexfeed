@@ -16,7 +16,7 @@ USAGE:
   rexfeed fetch                refresh the cache from all sources
   rexfeed pane [--key KEY]     run the side pane (the hook opens it)
   rexfeed on | off [--block B] enable/disable for this session (/rexfeed-start, /rexfeed-stop)
-  rexfeed hook start|stop|end [--block B]
+  rexfeed hook start|stop|substart|substop|end [--block B]
                                agent hook entry points (Claude Code, Codex, OpenCode, Pi)
 
   The Rex pane defaults to $REX_BLOCK; --block overrides it.
@@ -204,6 +204,26 @@ pub struct PaneState {
     pub spawned_at: f64,
     #[serde(default)]
     pub enabled: bool, // opt-in per session via /rexfeed-start
+    /// subagents still running (agent_id -> start time); the pane stays open until they finish
+    #[serde(default)]
+    pub agents: std::collections::HashMap<String, f64>,
+    /// the main agent finished its turn (Stop) and is waiting on nothing but subagents
+    #[serde(default)]
+    pub turn_done: bool,
+}
+
+/// A subagent that never reported back (crash, killed session) stops counting after this.
+const SUBAGENT_STALE_SECS: f64 = 3.0 * 3600.0;
+
+/// Close the pane if the turn is over and no subagent is still working.
+fn close_if_idle(s: &mut PaneState) {
+    let t = now();
+    s.agents
+        .retain(|_, started| t - *started < SUBAGENT_STALE_SECS);
+    if s.turn_done && s.agents.is_empty() {
+        s.status = "closed".into();
+        s.spawned_at = 0.0;
+    }
 }
 
 fn state_path(key: &str) -> PathBuf {
@@ -250,10 +270,14 @@ fn block(args: &[String]) -> Option<String> {
 }
 
 fn hook(action: &str, key: Option<String>) {
+    let mut input = String::new();
     if !matches!(action, "on" | "off") {
-        let mut sink = String::new();
-        let _ = std::io::stdin().read_to_string(&mut sink); // drain hook JSON
+        let _ = std::io::stdin().read_to_string(&mut input); // hook JSON
     }
+    let agent_id = serde_json::from_str::<serde_json::Value>(&input)
+        .ok()
+        .and_then(|v| v.get("agent_id").and_then(|a| a.as_str()).map(String::from))
+        .unwrap_or_else(|| "subagent".into());
     let Some(key) = key else {
         return;
     };
@@ -261,17 +285,27 @@ fn hook(action: &str, key: Option<String>) {
         return;
     }
     match action {
-        // the agent finished its turn: the pane closes (it reopens on the next prompt)
+        // the agent finished its turn: the pane closes once no subagent is still running
+        // (it reopens on the next prompt)
         "stop" => update_state(&key, |s| {
-            s.status = "closed".into();
-            s.spawned_at = 0.0;
+            s.turn_done = true;
+            close_if_idle(s);
         }),
-        "end" => update_state(&key, |s| s.status = "ended".into()),
+        // a subagent finished: if it was the last one and the turn is over, close
+        "substop" => update_state(&key, |s| {
+            s.agents.remove(&agent_id);
+            close_if_idle(s);
+        }),
+        "end" => update_state(&key, |s| {
+            s.status = "ended".into();
+            s.agents.clear();
+        }),
         "off" => update_state(&key, |s| {
             s.enabled = false;
             s.status = "ended".into();
+            s.agents.clear();
         }),
-        "on" | "start" => {
+        "on" | "start" | "substart" => {
             if action == "on" {
                 // opting in doesn't open the pane; the next prompt (agent starts working) does
                 update_state(&key, |s| s.enabled = true);
@@ -280,7 +314,14 @@ fn hook(action: &str, key: Option<String>) {
             if !read_state(&key).enabled {
                 return;
             }
-            update_state(&key, |s| s.status = "running".into());
+            update_state(&key, |s| {
+                s.status = "running".into();
+                if action == "substart" {
+                    s.agents.insert(agent_id.clone(), now());
+                } else {
+                    s.turn_done = false;
+                }
+            });
             let cfg = config();
             let exe = std::env::current_exe().unwrap();
             if now() - load_store().fetched > cfg.refresh_minutes * 60.0 {
